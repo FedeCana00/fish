@@ -62,7 +62,7 @@ torch.backends.cudnn.deterministic = True
 # experiment directory setup
 args.experiment = f"{args.dataset}_{args.algorithm}" \
     if args.experiment == '.' else args.experiment
-directory_name = '../experiments/{}'.format(args.experiment)
+directory_name = '/kaggle/working/experiments/{}'.format(args.experiment)
 if not os.path.exists(directory_name):
     os.makedirs(directory_name)
 runPath = mkdtemp(prefix=runId, dir=directory_name)
