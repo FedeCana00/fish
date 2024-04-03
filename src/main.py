@@ -17,6 +17,8 @@ import models
 from config import dataset_defaults
 from utils import unpack_data, sample_domains, save_best_model, \
     Logger, return_predict_fn, return_criterion, fish_step
+  
+from my_gradcam import my_gradcam
 
 runId = datetime.datetime.now().isoformat().replace(':', '_')
 torch.backends.cudnn.benchmark = True
@@ -41,6 +43,13 @@ parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA use')
 parser.add_argument('--seed', type=int, default=-1,
                     help='random seed, set as -1 for random.')
+# Training info
+parser.add_argument('--no-training', action='store_true', default=False,
+                    help='upload the model from .rar info.')
+parser.add_argument('--rar-path', type=str,
+                    help='path to model.rar dir.')
+parser.add_argument('--gradcam-path', type=str,
+                    help='path to gradcam images.')
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -62,7 +71,7 @@ torch.backends.cudnn.deterministic = True
 # experiment directory setup
 args.experiment = f"{args.dataset}_{args.algorithm}" \
     if args.experiment == '.' else args.experiment
-directory_name = '/kaggle/working/experiments/{}'.format(args.experiment)
+directory_name = '../experiments/{}'.format(args.experiment)
 if not os.path.exists(directory_name):
     os.makedirs(directory_name)
 runPath = mkdtemp(prefix=runId, dir=directory_name)
@@ -223,21 +232,42 @@ def test(test_loader, agg, loader_type='test', verbose=True, save_ypred=False):
 
 
 if __name__ == '__main__':
-    if args.algorithm == 'fish' and args.pretrain_iters != 0:
-        print("="*30 + "ERM pretrain" + "="*30)
-        pretrain(train_loader, args.pretrain_iters)
-
-    print("="*30 + f"Training: {args.algorithm}" + "="*30)
-    train = locals()[f'train_{args.algorithm}']
     agg = defaultdict(list)
     agg['val_stat'] = [0.]
-    for epoch in range(args.epochs):
-        train(train_loader, epoch, agg)
-        test(val_loader, agg, loader_type='val')
-        test(test_loader, agg, loader_type='test')
-        save_best_model(model, runPath, agg, args)
 
-    model.load_state_dict(torch.load(runPath + '/model.rar'))
-    print('Finished training! Loading best model...')
+    if not args.no_training:
+      if args.algorithm == 'fish' and args.pretrain_iters != 0:
+          print("="*30 + "ERM pretrain" + "="*30)
+          pretrain(train_loader, args.pretrain_iters)
+
+      print("="*30 + f"Training: {args.algorithm}" + "="*30)
+      train = locals()[f'train_{args.algorithm}']
+      
+      for epoch in range(args.epochs):
+          train(train_loader, epoch, agg)
+          test(val_loader, agg, loader_type='val')
+          test(test_loader, agg, loader_type='test')
+          save_best_model(model, runPath, agg, args)
+      
+      model.load_state_dict(torch.load(runPath + '/model.rar'))
+      print('Finished training! Loading best model...')
+    else:
+      model.load_state_dict(torch.load(args.rar_path))
+      print('Loading best model...')
+
+    # Initialize a list to hold the tensors
+    data_tensors = []
+
+    # Iterate through the DataLoader to extract tensors
+    for i, batch in enumerate(test_loader):
+        # Add the batch tensors to the list
+        data_tensors.append(batch[0])
+        break
+
+    # Concatenate the tensors of the list into a single tensor
+    input_tensor = torch.cat(data_tensors)
+
+    my_gradcam(model, input_tensor, args.gradcam_path)
+
     for split, loader in tv_loaders.items():
         test(loader, agg, loader_type=split, save_ypred=True)
