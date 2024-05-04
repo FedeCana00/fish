@@ -20,6 +20,10 @@ from utils import unpack_data, sample_domains, save_best_model, \
   
 from my_gradcam import my_gradcam
 
+import wilds
+wilds.datasets.camelyon17_dataset.TEST_CENTER = 0
+wilds.datasets.camelyon17_dataset.VAL_CENTER = 1
+
 runId = datetime.datetime.now().isoformat().replace(':', '_')
 torch.backends.cudnn.benchmark = True
 
@@ -259,7 +263,7 @@ if __name__ == '__main__':
     data_tensors = []
 
     # Iterate through the DataLoader to extract tensors
-    for i, batch in enumerate(test_loader):
+    for i, batch in enumerate(train_loader):
         # Add the batch tensors to the list
         data_tensors.append(batch[0])
         break
