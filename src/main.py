@@ -15,14 +15,10 @@ import torch.optim as optim
 
 import models
 from config import dataset_defaults
-from utils import unpack_data, sample_domains, save_best_model, \
+from utils import unpack_data, sample_domains, save_best_model, save_model, \
     Logger, return_predict_fn, return_criterion, fish_step
   
 from my_gradcam import my_gradcam
-
-import wilds
-wilds.datasets.camelyon17_dataset.TEST_CENTER = 0
-wilds.datasets.camelyon17_dataset.VAL_CENTER = 1
 
 runId = datetime.datetime.now().isoformat().replace(':', '_')
 torch.backends.cudnn.benchmark = True
@@ -54,6 +50,14 @@ parser.add_argument('--rar-path', type=str,
                     help='path to model.rar dir.')
 parser.add_argument('--gradcam-path', type=str,
                     help='path to gradcam images.')
+parser.add_argument('--save-model-path', type=str, default=None,
+                    help='path where save model.')
+parser.add_argument('--epoch-offset', type=int, default=0,
+                    help='epoch to restart model training.')
+parser.add_argument('--val-center', type=int, default=1,
+                    help='validation center.')
+parser.add_argument('--test-center', type=int, default=2,
+                    help='test center.')
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -62,6 +66,11 @@ device = torch.device("cuda" if args.cuda else "cpu")
 args_dict = args.__dict__
 args_dict.update(dataset_defaults[args.dataset])
 args = argparse.Namespace(**args_dict)
+
+# dataset settings
+import wilds
+wilds.datasets.camelyon17_dataset.TEST_CENTER = args.test_center
+wilds.datasets.camelyon17_dataset.VAL_CENTER = args.val_center
 
 # Choosing and saving a random seed for reproducibility
 if args.seed == -1:
@@ -240,21 +249,26 @@ if __name__ == '__main__':
     agg['val_stat'] = [0.]
 
     if not args.no_training:
-      if args.algorithm == 'fish' and args.pretrain_iters != 0:
-          print("="*30 + "ERM pretrain" + "="*30)
-          pretrain(train_loader, args.pretrain_iters)
+        if args.epoch_offset == 0:
+            if args.algorithm == 'fish' and args.pretrain_iters != 0:
+                print("="*30 + "ERM pretrain" + "="*30)
+                pretrain(train_loader, args.pretrain_iters)
 
-      print("="*30 + f"Training: {args.algorithm}" + "="*30)
-      train = locals()[f'train_{args.algorithm}']
+            print("="*30 + f"Training: {args.algorithm}" + "="*30)
+            train = locals()[f'train_{args.algorithm}']
+        else:
+            model.load_state_dict(torch.load(f"{args.save_model_path}/model_epoch_{args.epoch_offset - 1}.rar"))
+
+        for epoch in range(args.epoch_offset, args.epochs):
+            train(train_loader, epoch, agg)
+            test(val_loader, agg, loader_type='val')
+            test(test_loader, agg, loader_type='test')
+            if args.save_model_path != None:
+                save_model(model, f"{args.save_model_path}/model_epoch_{epoch}.rar")
+            save_best_model(model, runPath, agg, args)
       
-      for epoch in range(args.epochs):
-          train(train_loader, epoch, agg)
-          test(val_loader, agg, loader_type='val')
-          test(test_loader, agg, loader_type='test')
-          save_best_model(model, runPath, agg, args)
-      
-      model.load_state_dict(torch.load(runPath + '/model.rar'))
-      print('Finished training! Loading best model...')
+        model.load_state_dict(torch.load(runPath + '/model.rar'))
+        print('Finished training! Loading best model...')
     else:
       model.load_state_dict(torch.load(args.rar_path))
       print('Loading best model...')
