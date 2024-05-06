@@ -254,11 +254,12 @@ if __name__ == '__main__':
                 print("="*30 + "ERM pretrain" + "="*30)
                 pretrain(train_loader, args.pretrain_iters)
 
-            print("="*30 + f"Training: {args.algorithm}" + "="*30)
-            train = locals()[f'train_{args.algorithm}']
         else:
             model.load_state_dict(torch.load(f"{args.save_model_path}/model_epoch_{args.epoch_offset - 1}.rar"))
 
+        print("="*30 + f"Training: {args.algorithm}" + "="*30)
+        train = locals()[f'train_{args.algorithm}']
+            
         for epoch in range(args.epoch_offset, args.epochs):
             train(train_loader, epoch, agg)
             test(val_loader, agg, loader_type='val')
